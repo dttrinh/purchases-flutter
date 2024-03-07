@@ -283,7 +283,7 @@ shouldShowInAppMessagesAutomatically:(BOOL)shouldShowInAppMessagesAutomatically
 
 - (void)getCurrentOfferingForPlacement:(NSString *)placement
                              result:(FlutterResult)result {
-    [RCCommonFunctionality getCurrentOfferingForPlacement:placement 
+    [RCCommonFunctionality getCurrentOfferingForPlacement:placement
                                           completionBlock:[self getResponseCompletionBlock:result]];
 }
 
@@ -694,7 +694,7 @@ readyForPromotedProduct:(RCStoreProduct *)product
 }
 
 - (NSString *)platformFlavorVersion {
-    return @"6.25.0";
+    return @"7.0.0-beta.1";
 }
 
 @end
