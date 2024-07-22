@@ -3,7 +3,7 @@
 #else
 #import <Flutter/Flutter.h>
 #endif
-@import RevenueCat;
+#import <RevenueCat/RevenueCat-Swift.h>
 
 @interface PurchasesFlutterPlugin : NSObject<FlutterPlugin>
 @end
