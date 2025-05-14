@@ -3,7 +3,6 @@ package com.revenuecat.purchases_ui_flutter.views
 import android.content.Context
 import android.view.View
 import com.revenuecat.purchases.hybridcommon.ui.PaywallListenerWrapper
-import com.revenuecat.purchases.ui.revenuecatui.ExperimentalPreviewRevenueCatUIPurchasesAPI
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -11,7 +10,6 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.platform.PlatformView
 import com.revenuecat.purchases.ui.revenuecatui.views.PaywallView as NativePaywallView
 
-@OptIn(ExperimentalPreviewRevenueCatUIPurchasesAPI::class)
 internal class PaywallView(
     context: Context,
     id: Int,
@@ -48,6 +46,10 @@ internal class PaywallView(
                     "onPurchaseCompleted",
                     mapOf("customerInfo" to customerInfo, "storeTransaction" to storeTransaction)
                 )
+            }
+
+            override fun onPurchaseCancelled() {
+                methodChannel.invokeMethod("onPurchaseCancelled", null)
             }
 
             override fun onPurchaseError(error: Map<String, Any?>) {

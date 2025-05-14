@@ -86,9 +86,14 @@ class Purchases {
   ///
   /// [appUserID] An optional unique id for identifying the user.
   ///
-  /// [observerMode] An optional boolean. Set this to TRUE if you have your own
-  /// IAP implementation and want to use only RevenueCat's backend.
-  /// Default is FALSE.
+  /// [purchasesAreCompletedBy] Set this to PurchasesAreCompletedByMyApp and provide a StoreKitVersion if you
+  /// have your own IAP implementation and want to only use RevenueCat's backend.
+  /// Defaults to PurchasesAreCompletedByRevenueCat.
+  ///
+  /// If you are on Android and setting this to PurchasesAreCompletedByMyApp, you will have to
+  /// acknowledge the purchases yourself.
+  /// If your app is only on Android, you may specify any StoreKitVersion,
+  /// as it is ignored by the native Android SDK.
   ///
   /// [userDefaultsSuiteName] iOS-only, will be ignored for Android.
   /// Set this if you would like the RevenueCat SDK to store its preferences in a different
@@ -111,17 +116,20 @@ class Purchases {
   static Future<void> setup(
     String apiKey, {
     String? appUserId,
-    bool observerMode = false,
+    PurchasesAreCompletedBy? purchasesAreCompletedBy,
     String? userDefaultsSuiteName,
+    StoreKitVersion? storeKitVersion,
     bool useAmazon = false,
     bool usesStoreKit2IfAvailable = false,
   }) {
-    final configuration = (PurchasesConfiguration(apiKey)
+    final configuration = PurchasesConfiguration(apiKey)
       ..appUserID = appUserId
-      ..observerMode = observerMode
+      ..purchasesAreCompletedBy =
+          purchasesAreCompletedBy ?? const PurchasesAreCompletedByRevenueCat()
       ..userDefaultsSuiteName = userDefaultsSuiteName
-      ..store = useAmazon ? Store.amazon : null
-      ..usesStoreKit2IfAvailable = usesStoreKit2IfAvailable);
+      ..storeKitVersion = storeKitVersion ?? StoreKitVersion.defaultVersion
+      ..store = useAmazon ? Store.amazon : null;
+
     _lastReceivedCustomerInfo = null;
     return configure(configuration);
   }
@@ -131,39 +139,60 @@ class Purchases {
   /// [PurchasesConfiguration] Object containing configuration parameters
   static Future<void> configure(
     PurchasesConfiguration purchasesConfiguration,
-  ) =>
-      _channel.invokeMethod(
-        'setupPurchases',
-        {
-          'apiKey': purchasesConfiguration.apiKey,
-          'appUserId': purchasesConfiguration.appUserID,
-          'observerMode': purchasesConfiguration.observerMode,
-          'userDefaultsSuiteName': purchasesConfiguration.userDefaultsSuiteName,
-          'useAmazon': purchasesConfiguration.store == Store.amazon,
-          'usesStoreKit2IfAvailable':
-              // ignore: deprecated_member_use_from_same_package
-              purchasesConfiguration.usesStoreKit2IfAvailable,
-          'shouldShowInAppMessagesAutomatically':
-              purchasesConfiguration.shouldShowInAppMessagesAutomatically,
-          'entitlementVerificationMode':
-              purchasesConfiguration.entitlementVerificationMode.name,
-        },
-      );
+  ) async {
+    var purchasesCompletedByToUse = PurchasesAreCompletedByType.revenueCat;
+    var storeKitVersionToUse = purchasesConfiguration.storeKitVersion ??
+        StoreKitVersion.defaultVersion;
 
-  // Default to TRUE, set this to FALSE if you are consuming and acknowledging transactions outside of the Purchases SDK.
-  ///
-  /// [finishTransactions] The value to be passed to finishTransactions.
-  ///
-  static Future<void> setFinishTransactions(bool finishTransactions) =>
-      _channel.invokeMethod(
-        'setFinishTransactions',
-        {
-          'finishTransactions': finishTransactions,
-        },
-      );
+    if (purchasesConfiguration.purchasesAreCompletedBy
+        is PurchasesAreCompletedByMyApp) {
+      purchasesCompletedByToUse = PurchasesAreCompletedByType.myApp;
+      storeKitVersionToUse = (purchasesConfiguration.purchasesAreCompletedBy
+              as PurchasesAreCompletedByMyApp)
+          .storeKitVersion;
+
+      if (purchasesConfiguration.storeKitVersion != null &&
+          purchasesConfiguration.storeKitVersion !=
+              StoreKitVersion.defaultVersion &&
+          storeKitVersionToUse != purchasesConfiguration.storeKitVersion) {
+        debugPrint(
+            'Warning: The storeKitVersion in purchasesAreCompletedBy does not match the '
+            'function\'s storeKitVersion parameter. We will use the value found in purchasesAreCompletedBy.');
+      }
+
+      if (storeKitVersionToUse == StoreKitVersion.defaultVersion) {
+        debugPrint(
+            'Warning: You should provide the specific StoreKit version you\'re using in '
+            'your implementation when configuring PurchasesAreCompletedByMyApp, '
+            'and not rely on the DEFAULT.');
+      }
+    }
+
+    await _channel.invokeMethod(
+      'setupPurchases',
+      {
+        'apiKey': purchasesConfiguration.apiKey,
+        'appUserId': purchasesConfiguration.appUserID,
+        'purchasesAreCompletedBy': purchasesCompletedByToUse.name,
+        'userDefaultsSuiteName': purchasesConfiguration.userDefaultsSuiteName,
+        'storeKitVersion': storeKitVersionToUse.name,
+        'useAmazon': purchasesConfiguration.store == Store.amazon,
+        'shouldShowInAppMessagesAutomatically':
+            purchasesConfiguration.shouldShowInAppMessagesAutomatically,
+        'entitlementVerificationMode':
+            purchasesConfiguration.entitlementVerificationMode.name,
+        'pendingTransactionsForPrepaidPlansEnabled':
+            purchasesConfiguration.pendingTransactionsForPrepaidPlansEnabled,
+      },
+    );
+  }
 
   /// Deprecated. Configure behavior through the RevenueCat dashboard instead.
   /// Set this to true if you are passing in an appUserID but it is anonymous.
+  ///
+  /// If you have configured the Legacy restore behavior in the RevenueCat
+  /// dashboard and are currently setting this to true,
+  /// keep this setting active.
   ///
   /// This is true by default if you didn't pass an appUserID.
   /// If a user tries to purchase a product that is active on the current app
@@ -338,7 +367,7 @@ class Purchases {
       'productIdentifier': productIdentifier,
       'type': type.name,
       'googleOldProductIdentifier': upgradeInfo?.oldSKU,
-      'googleProrationMode': prorationMode?.index,
+      'googleProrationMode': prorationMode?.value,
       'googleIsPersonalizedPrice': null,
       'presentedOfferingIdentifier': null,
     });
@@ -411,7 +440,7 @@ class Purchases {
     bool? googleIsPersonalizedPrice,
   }) async {
     final prorationMode = googleProductChangeInfo?.prorationMode?.value ??
-        upgradeInfo?.prorationMode?.index;
+        upgradeInfo?.prorationMode?.value;
     final customerInfo = await _invokeReturningCustomerInfo('purchasePackage', {
       'packageIdentifier': packageToPurchase.identifier,
       'presentedOfferingContext':
@@ -533,6 +562,15 @@ class Purchases {
   static Future<String> get appUserID async =>
       await _channel.invokeMethod('getAppUserID') as String;
 
+  /// Gets the current storefront for the store account.
+  static Future<Storefront?> get storefront async {
+    final storefrontJson = await _channel.invokeMethod('getStorefront');
+    if (storefrontJson == null) {
+      return null;
+    }
+    return Storefront.fromJson(Map<String, dynamic>.from(storefrontJson));
+  }
+
   /// This function will logIn the current user with an appUserID.
   /// Typically this would be used after logging in a user to identify them without
   /// calling configure
@@ -604,16 +642,6 @@ class Purchases {
   ///  This method should be called anytime a sync is needed, like after a
   ///  successful purchase.
   static Future<void> syncPurchases() => _channel.invokeMethod('syncPurchases');
-
-  /// iOS only. Enable automatic collection of Apple Search Ad attribution. Disabled by
-  /// default
-  @Deprecated('Use enableAdServicesAttributionTokenCollection')
-  static Future<void> setAutomaticAppleSearchAdsAttributionCollection(
-    bool enabled,
-  ) =>
-      _channel.invokeMethod('setAutomaticAppleSearchAdsAttributionCollection', {
-        'enabled': enabled,
-      });
 
   /// iOS only. Enable automatic collection of Apple Search Ad attribution. Disabled by
   /// default
@@ -875,6 +903,88 @@ class Purchases {
     return PromotionalOffer.fromJson(Map<String, dynamic>.from(result));
   }
 
+  /// iOS only, requires iOS 18.0 or greater with StoreKit 2.
+  ///
+  /// Use this function to retrieve the eligible [WinBackOffer]s that a subscriber
+  /// is eligible for for a given [StoreProduct].
+  ///
+  /// [product] The [StoreProduct] the user intends to purchase.
+  static Future<List<WinBackOffer>> getEligibleWinBackOffersForProduct(
+    StoreProduct product,
+  ) async {
+    final result =
+        await _channel.invokeMethod('eligibleWinBackOffersForProduct', {
+      'productIdentifier': product.identifier,
+    });
+
+    return (result as List)
+        .map((e) => WinBackOffer.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// iOS only, requires iOS 18.0 or greater with StoreKit 2.
+  ///
+  /// Use this function to retrieve the eligible [WinBackOffer]s that a subscriber
+  /// is eligible for for a given [Package].
+  ///
+  /// [package] The [Package] the user intends to purchase.
+  static Future<List<WinBackOffer>> getEligibleWinBackOffersForPackage(
+    Package package,
+  ) async =>
+      getEligibleWinBackOffersForProduct(package.storeProduct);
+
+  /// iOS only, requires iOS 18.0 or greater with StoreKit 2.
+  /// Purchase a product applying a given win-back offer.
+  ///
+  /// Returns a [CustomerInfo] object. Throws a
+  /// [PlatformException] if the purchase is unsuccessful.
+  /// Check if [PurchasesErrorHelper.getErrorCode] is
+  /// [PurchasesErrorCode.purchaseCancelledError] to check if the user cancelled
+  /// the purchase.
+  ///
+  /// [storeProduct] The product to purchase.
+  ///
+  /// [winBackOffer] Win-back offer that will be applied to the product.
+  /// Retrieve this offer using [getEligibleWinBackOffersForProduct]
+  /// or [getEligibleWinBackOffersForPackage].
+  static Future<CustomerInfo> purchaseProductWithWinBackOffer(
+    StoreProduct product,
+    WinBackOffer winBackOffer,
+  ) async {
+    final customerInfo =
+        await _invokeReturningCustomerInfo('purchaseProductWithWinBackOffer', {
+      'productIdentifier': product.identifier,
+      'winBackOfferIdentifier': winBackOffer.identifier,
+    });
+    return customerInfo;
+  }
+
+  /// iOS only, requires iOS 18.0 or greater with StoreKit 2.
+  /// Purchase a package applying a given win-back offer.
+  ///
+  /// Returns a [CustomerInfo] object. Throws a
+  /// [PlatformException] if the purchase is unsuccessful.
+  /// Check if [PurchasesErrorHelper.getErrorCode] is
+  /// [PurchasesErrorCode.purchaseCancelledError] to check if the user cancelled
+  /// the purchase.
+  ///
+  /// [package] The package to purchase.
+  ///
+  /// [winBackOffer] Win-back offer that will be applied to the package.
+  /// Retrieve this offer using [getEligibleWinBackOffersForPackage].
+  static Future<CustomerInfo> purchasePackageWithWinBackOffer(
+    Package package,
+    WinBackOffer winBackOffer,
+  ) async {
+    final customerInfo =
+        await _invokeReturningCustomerInfo('purchasePackageWithWinBackOffer', {
+      'packageIdentifier': package.identifier,
+      'presentedOfferingContext': package.presentedOfferingContext.toJson(),
+      'winBackOfferIdentifier': winBackOffer.identifier,
+    });
+    return customerInfo;
+  }
+
   /// iOS 15+ only. Presents a refund request sheet in the current window scene for
   /// the latest transaction associated with the active entitlement.
   ///
@@ -898,6 +1008,30 @@ class Purchases {
     );
     if (statusCode == null) throw UnsupportedPlatformException();
     return RefundRequestStatusExtension.from(statusCode);
+  }
+
+  /// iOS only. Always returns an error on iOS < 15.
+  ///
+  /// Use this method only if you already have your own IAP implementation using StoreKit 2 and want to use
+  /// RevenueCat's backend. If you are using StoreKit 1 for your implementation, you do not need this method.
+  ///
+  /// You only need to use this method with *new* purchases. Subscription updates are observed automatically.
+  ///
+  /// Important: This should only be used if you have set purchasesAreCompletedBy to PurchasesAreCompletedByMyApp during SDK configuration.
+  ///
+  /// @warning You need to finish the transaction yourself after calling this method.
+  ///
+  /// @param [productID] Product ID that was just purchased
+  /// @returns [Future<StoreTransaction>] If there was a transaction found and handled for the provided product ID.
+  static Future<StoreTransaction> recordPurchase(
+    String productID,
+  ) async {
+    final response = await _channel.invokeMethod(
+      'recordPurchaseForProductID',
+      {'productID': productID},
+    );
+    if (response == null) throw UnsupportedPlatformException();
+    return StoreTransaction.fromJson(Map<String, dynamic>.from(response));
   }
 
   /// iOS 15+ only. Presents a refund request sheet in the current window scene for
@@ -980,7 +1114,33 @@ class Purchases {
   /// @param [amazonUserID] Amazon's userID. This parameter will be ignored when syncing a Google purchase.
   /// @param [isoCurrencyCode] Product's currency code in ISO 4217 format.
   /// @param [price] Product's price.
+  @Deprecated('Use syncAmazonPurchase')
   static Future<void> syncObserverModeAmazonPurchase(
+    String productID,
+    String receiptID,
+    String amazonUserID,
+    String? isoCurrencyCode,
+    double? price,
+  ) =>
+      syncAmazonPurchase(
+        productID,
+        receiptID,
+        amazonUserID,
+        isoCurrencyCode,
+        price,
+      );
+
+  /// This method will send a purchase to the RevenueCat backend. This function should only be called if you are
+  /// in Amazon observer mode or performing a client side migration of your current users to RevenueCat.
+  ///
+  /// The receipt IDs are cached if successfully posted so they are not posted more than once.
+  ///
+  /// @param [productID] Product ID associated to the purchase.
+  /// @param [receiptID] ReceiptId that represents the Amazon purchase.
+  /// @param [amazonUserID] Amazon's userID. This parameter will be ignored when syncing a Google purchase.
+  /// @param [isoCurrencyCode] Product's currency code in ISO 4217 format.
+  /// @param [price] Product's price.
+  static Future<void> syncAmazonPurchase(
     String productID,
     String receiptID,
     String amazonUserID,
@@ -1034,6 +1194,24 @@ class Purchases {
           'types': types?.map((e) => e.index).toList(),
         },
       );
+
+  static Future<WebPurchaseRedemption?> parseAsWebPurchaseRedemption(String urlString) async {
+    final bool result = await _channel.invokeMethod('isWebPurchaseRedemptionURL', {
+      'urlString': urlString,
+    });
+    if (result) {
+      return WebPurchaseRedemption(urlString);
+    } else {
+      return null;
+    }
+  }
+
+  static Future<WebPurchaseRedemptionResult> redeemWebPurchase(WebPurchaseRedemption webPurchaseRedemption) async {
+    final result = await _channel.invokeMethod('redeemWebPurchase', {
+      'redemptionLink': webPurchaseRedemption.redemptionLink,
+    });
+    return WebPurchaseRedemptionResult.fromJson(Map<String, dynamic>.from(result));
+  }
 
   static Future<CustomerInfo> _invokeReturningCustomerInfo(String method,
       // ignore: require_trailing_commas
@@ -1141,7 +1319,11 @@ enum InAppMessageType {
   priceIncreaseConsent,
 
   /// iOS-only. StoreKit generic messages.
-  generic
+  generic,
+
+  /// iOS-only. This message will show if the subscriber is eligible for an iOS win-back
+  /// offer and will allow the subscriber to redeem the offer.
+  winBackOffer
 }
 
 /// Log levels.

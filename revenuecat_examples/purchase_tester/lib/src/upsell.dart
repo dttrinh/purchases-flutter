@@ -7,10 +7,11 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:purchases_flutter_example/src/paywall_footer_screen.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
-import 'constant.dart';
 import 'cats.dart';
+import 'constant.dart';
 import 'initial.dart';
 import 'paywall.dart';
+import 'winback_testing_screen.dart';
 
 class UpsellScreen extends StatefulWidget {
   const UpsellScreen({Key? key}) : super(key: key);
@@ -36,6 +37,14 @@ class _UpsellScreenState extends State<UpsellScreen> {
       print(e);
     }
 
+    Storefront? storefront;
+    try {
+      storefront = await Purchases.storefront;
+      print("Current storefront: ${storefront?.countryCode}");
+    } on PlatformException catch (e) {
+      print("Error getting storefront: $e");
+    }
+
     if (!mounted) return;
 
     setState(() {
@@ -49,14 +58,83 @@ class _UpsellScreenState extends State<UpsellScreen> {
       appBar: AppBar(title: const Text('Upsell Screen')),
       body: _offerings == null
           ? const Center(child: CircularProgressIndicator())
-          : _buildOfferings(context),
+          : _buildUpsell(context),
     );
   }
 
-  Widget _buildOfferings(BuildContext context) {
-    final offering = _offerings!.current;
-    if (offering == null || offering.availablePackages.isEmpty) {
-      return const Center(child: Text('No offerings available'));
+  Widget _buildUpsell(BuildContext context) {
+    final currentOfferingId = _offerings!.current!.identifier;
+    return ListView(children: [
+      ..._offerings!.all.entries
+          .map((entry) => ExpansionTile(
+                title: Text("Offering ID: ${entry.key} "
+                        "${entry.key == currentOfferingId ? '(Current)' : ''}"
+                    .trim()),
+                children: _buildOffering(context, entry.value),
+              ))
+          .toList(),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(children: [
+                  const Text("Purchase Methods"),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final offerings =
+                          await Purchases.syncAttributesAndOfferingsIfNeeded();
+                      setState(() {
+                        _offerings = offerings;
+                      });
+                    },
+                    child: const Text('Sync Attributes and Offerings'),
+                  ),
+                ]))),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(children: [
+                  const Text("Win-Back Offer Testing"),
+                  ElevatedButton(
+                    onPressed: () async {
+                      Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => WinbackTestingScreen(),
+                          ));
+                    },
+                    child: const Text("Go to Win-Back Offer Testing Screen"),
+                  ),
+                ]))),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(children: [
+                  const Text("Customer Center"),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await RevenueCatUI.presentCustomerCenter();
+                    },
+                    child: const Text("Present Customer Center"),
+                  ),
+                ]))),
+      ),
+    ]);
+  }
+
+  List<Widget> _buildOffering(BuildContext context, Offering offering) {
+    if (offering.availablePackages.isEmpty) {
+      return [const Center(child: Text('No packages available'))];
     }
 
     List<Widget> packageCards = offering.availablePackages.map((package) {
@@ -76,13 +154,16 @@ class _UpsellScreenState extends State<UpsellScreen> {
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Column(
-            children: [Text(package.storeProduct.title), ...buttons],
+            children: [
+              Text("Product ID: ${package.storeProduct.identifier}"),
+              ...buttons
+            ],
           ),
         ),
       );
     }).toList();
 
-    List<Widget> purchaseOptions = [
+    return [
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Card(
@@ -93,7 +174,8 @@ class _UpsellScreenState extends State<UpsellScreen> {
                   const Text("Paywalls"),
                   ElevatedButton(
                     onPressed: () async {
-                      final paywallResult = await RevenueCatUI.presentPaywall();
+                      final paywallResult =
+                          await RevenueCatUI.presentPaywall(offering: offering);
                       log('Paywall result: $paywallResult');
                     },
                     child: const Text('Present paywall'),
@@ -102,7 +184,8 @@ class _UpsellScreenState extends State<UpsellScreen> {
                     onPressed: () async {
                       final paywallResult =
                           await RevenueCatUI.presentPaywallIfNeeded(
-                              entitlementKey);
+                              entitlementKey,
+                              offering: offering);
                       log('Paywall result: $paywallResult');
                     },
                     child: const Text(
@@ -150,31 +233,7 @@ class _UpsellScreenState extends State<UpsellScreen> {
                 ]))),
       ),
       ...packageCards,
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Card(
-            margin: const EdgeInsets.all(8.0),
-            child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(children: [
-                  const Text("Purchase Methods"),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final offerings =
-                          await Purchases.syncAttributesAndOfferingsIfNeeded();
-                      setState(() {
-                        _offerings = offerings;
-                      });
-                    },
-                    child: const Text('Sync Attributes and Offerings'),
-                  ),
-                ]))),
-      ),
     ];
-
-    return ListView(
-      children: purchaseOptions,
-    );
   }
 }
 

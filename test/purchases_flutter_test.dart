@@ -61,7 +61,6 @@ void main() {
     await Purchases.setup(
       'api_key',
       appUserId: 'cesar',
-      observerMode: true,
     );
     expect(
       log,
@@ -71,12 +70,99 @@ void main() {
           arguments: <String, dynamic>{
             'apiKey': 'api_key',
             'appUserId': 'cesar',
-            'observerMode': true,
+            'purchasesAreCompletedBy': 'REVENUECAT',
             'userDefaultsSuiteName': null,
             'useAmazon': false,
-            'usesStoreKit2IfAvailable': false,
+            'storeKitVersion': 'DEFAULT',
             'shouldShowInAppMessagesAutomatically': true,
             'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
+          },
+        ),
+      ],
+    );
+  });
+
+  test('setupPurchases with purchasesAreCompletedBy', () async {
+    await Purchases.setup(
+      'api_key',
+      appUserId: 'cesar',
+      purchasesAreCompletedBy: PurchasesAreCompletedByMyApp(
+        storeKitVersion: StoreKitVersion.storeKit2,
+      ),
+    );
+    expect(
+      log,
+      <Matcher>[
+        isMethodCall(
+          'setupPurchases',
+          arguments: <String, dynamic>{
+            'apiKey': 'api_key',
+            'appUserId': 'cesar',
+            'purchasesAreCompletedBy': 'MY_APP',
+            'userDefaultsSuiteName': null,
+            'useAmazon': false,
+            'storeKitVersion': 'STOREKIT_2',
+            'shouldShowInAppMessagesAutomatically': true,
+            'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
+          },
+        ),
+      ],
+    );
+  });
+
+  test('setupPurchases with storeKitVersion', () async {
+    await Purchases.setup(
+      'api_key',
+      appUserId: 'will',
+      storeKitVersion: StoreKitVersion.storeKit1,
+    );
+    expect(
+      log,
+      <Matcher>[
+        isMethodCall(
+          'setupPurchases',
+          arguments: <String, dynamic>{
+            'apiKey': 'api_key',
+            'appUserId': 'will',
+            'purchasesAreCompletedBy': 'REVENUECAT',
+            'userDefaultsSuiteName': null,
+            'useAmazon': false,
+            'storeKitVersion': 'STOREKIT_1',
+            'shouldShowInAppMessagesAutomatically': true,
+            'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
+          },
+        ),
+      ],
+    );
+  });
+
+  test('setupPurchases with conflicting storeKitVersions', () async {
+    await Purchases.setup(
+      'api_key',
+      appUserId: 'will',
+      purchasesAreCompletedBy: PurchasesAreCompletedByMyApp(
+        storeKitVersion: StoreKitVersion.storeKit2,
+      ),
+      storeKitVersion: StoreKitVersion.storeKit1,
+    );
+    expect(
+      log,
+      <Matcher>[
+        isMethodCall(
+          'setupPurchases',
+          arguments: <String, dynamic>{
+            'apiKey': 'api_key',
+            'appUserId': 'will',
+            'purchasesAreCompletedBy': 'MY_APP',
+            'userDefaultsSuiteName': null,
+            'useAmazon': false,
+            'storeKitVersion': 'STOREKIT_2',
+            'shouldShowInAppMessagesAutomatically': true,
+            'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
           },
         ),
       ],
@@ -818,6 +904,7 @@ void main() {
         null,
         null,
         PresentedOfferingContext('my-offer', null, null),
+        null,
       );
       final purchasePackageResult =
           await Purchases.purchaseSubscriptionOption(mockSubscriptionOption);
@@ -877,6 +964,7 @@ void main() {
         null,
         null,
         PresentedOfferingContext('my-offer', null, null),
+        null,
       );
       final googleProductChangeInfo = GoogleProductChangeInfo(
         'silver',
@@ -938,6 +1026,7 @@ void main() {
         null,
         null,
         null,
+        null,
       );
       await Purchases.purchaseSubscriptionOption(mockSubscriptionOption);
 
@@ -953,7 +1042,9 @@ void main() {
     await Purchases.setup(
       'api_key',
       appUserId: 'cesar',
-      observerMode: true,
+      purchasesAreCompletedBy: PurchasesAreCompletedByMyApp(
+        storeKitVersion: StoreKitVersion.storeKit2,
+      ),
       useAmazon: true,
     );
     expect(
@@ -964,12 +1055,13 @@ void main() {
           arguments: <String, dynamic>{
             'apiKey': 'api_key',
             'appUserId': 'cesar',
-            'observerMode': true,
+            'purchasesAreCompletedBy': 'MY_APP',
             'userDefaultsSuiteName': null,
+            'storeKitVersion': 'STOREKIT_2',
             'useAmazon': true,
-            'usesStoreKit2IfAvailable': false,
             'shouldShowInAppMessagesAutomatically': true,
             'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
           },
         ),
       ],
@@ -980,7 +1072,8 @@ void main() {
     await Purchases.configure(
       AmazonConfiguration('api_key')
         ..appUserID = 'cesar'
-        ..observerMode = true,
+        ..purchasesAreCompletedBy = const PurchasesAreCompletedByRevenueCat()
+        ..pendingTransactionsForPrepaidPlansEnabled = true,
     );
     expect(
       log,
@@ -990,12 +1083,13 @@ void main() {
           arguments: <String, dynamic>{
             'apiKey': 'api_key',
             'appUserId': 'cesar',
-            'observerMode': true,
+            'purchasesAreCompletedBy': 'REVENUECAT',
             'userDefaultsSuiteName': null,
             'useAmazon': true,
-            'usesStoreKit2IfAvailable': false,
+            'storeKitVersion': 'DEFAULT',
             'shouldShowInAppMessagesAutomatically': true,
             'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': true,
           },
         ),
       ],
@@ -1006,7 +1100,9 @@ void main() {
     await Purchases.configure(
       PurchasesConfiguration('api_key')
         ..appUserID = 'cesar'
-        ..observerMode = true,
+        ..purchasesAreCompletedBy = PurchasesAreCompletedByMyApp(
+          storeKitVersion: StoreKitVersion.defaultVersion,
+        ),
     );
     expect(
       log,
@@ -1016,12 +1112,13 @@ void main() {
           arguments: <String, dynamic>{
             'apiKey': 'api_key',
             'appUserId': 'cesar',
-            'observerMode': true,
+            'purchasesAreCompletedBy': 'MY_APP',
             'userDefaultsSuiteName': null,
+            'storeKitVersion': 'DEFAULT',
             'useAmazon': false,
-            'usesStoreKit2IfAvailable': false,
             'shouldShowInAppMessagesAutomatically': true,
             'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
           },
         ),
       ],
@@ -1032,7 +1129,9 @@ void main() {
     await Purchases.configure(
       PurchasesConfiguration('api_key')
         ..appUserID = 'cesar'
-        ..observerMode = true
+        ..purchasesAreCompletedBy = PurchasesAreCompletedByMyApp(
+          storeKitVersion: StoreKitVersion.defaultVersion,
+        )
         ..store = Store.amazon,
     );
     expect(
@@ -1043,12 +1142,13 @@ void main() {
           arguments: <String, dynamic>{
             'apiKey': 'api_key',
             'appUserId': 'cesar',
-            'observerMode': true,
+            'purchasesAreCompletedBy': 'MY_APP',
             'userDefaultsSuiteName': null,
+            'storeKitVersion': 'DEFAULT',
             'useAmazon': true,
-            'usesStoreKit2IfAvailable': false,
             'shouldShowInAppMessagesAutomatically': true,
             'entitlementVerificationMode': 'DISABLED',
+            'pendingTransactionsForPrepaidPlansEnabled': false,
           },
         ),
       ],
@@ -1209,6 +1309,52 @@ void main() {
     expect(receivedLogLevel, LogLevel.info);
   });
 
+  test('syncAmazonPurchase calls channel correctly', () async {
+    await Purchases.syncAmazonPurchase(
+      'productID_test',
+      'receiptID_test',
+      'amazonUserID_test',
+      'isoCurrencyCode_test',
+      3.4,
+    );
+    expect(log, <Matcher>[
+      isMethodCall(
+        'syncAmazonPurchase',
+        arguments: {
+          'productID': 'productID_test',
+          'receiptID': 'receiptID_test',
+          'amazonUserID': 'amazonUserID_test',
+          'isoCurrencyCode': 'isoCurrencyCode_test',
+          'price': 3.4,
+        },
+      ),
+    ]);
+  });
+
+  test(
+      'syncAmazonPurchase calls channel correctly with null price and isoCurrencyCode',
+      () async {
+    await Purchases.syncAmazonPurchase(
+      'productID_test',
+      'receiptID_test',
+      'amazonUserID_test',
+      null,
+      null,
+    );
+    expect(log, <Matcher>[
+      isMethodCall(
+        'syncAmazonPurchase',
+        arguments: {
+          'productID': 'productID_test',
+          'receiptID': 'receiptID_test',
+          'amazonUserID': 'amazonUserID_test',
+          'isoCurrencyCode': null,
+          'price': null,
+        },
+      ),
+    ]);
+  });
+
   test('syncObserverModeAmazonPurchase calls channel correctly', () async {
     await Purchases.syncObserverModeAmazonPurchase(
       'productID_test',
@@ -1284,5 +1430,45 @@ void main() {
         },
       ),
     ]);
+  });
+
+  test('parseAsWebPurchaseRedemption works correctly', () async {
+    const link = 'custom-scheme://redeem_web_purchase?redemption_token=1234';
+    response = true;
+    final webPurchaseRedemption = await Purchases.parseAsWebPurchaseRedemption(link);
+    expect(log, <Matcher>[
+      isMethodCall(
+        'isWebPurchaseRedemptionURL',
+        arguments: {
+          'urlString': link,
+        },
+      ),
+    ]);
+    expect(webPurchaseRedemption, isNotNull);
+  });
+
+  test('redeemWebPurchase works correctly', () async {
+    const link = 'custom-scheme://redeem_web_purchase?redemption_token=1234';
+    const webPurchaseRedemption = WebPurchaseRedemption(link);
+    response = {
+      'result': 'SUCCESS',
+      'customerInfo': mockCustomerInfoResponse,
+    };
+    final webPurchaseRedemptionResult = await Purchases.redeemWebPurchase(webPurchaseRedemption);
+    expect(log, <Matcher>[
+      isMethodCall(
+        'redeemWebPurchase',
+        arguments: {
+          'redemptionLink': link,
+        },
+      ),
+    ]);
+    final expiredOrNull = webPurchaseRedemptionResult.whenOrNull(
+      success: (customerInfo) {
+        expect(customerInfo, CustomerInfo.fromJson(mockCustomerInfoResponse));
+        return webPurchaseRedemptionResult;
+      },
+    );
+    expect(expiredOrNull, isNotNull);
   });
 }

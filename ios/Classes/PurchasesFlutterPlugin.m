@@ -47,8 +47,7 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
     if ([@"setupPurchases" isEqualToString:call.method]) {
         NSString *apiKey = arguments[@"apiKey"];
         NSString *appUserID = arguments[@"appUserId"];
-        BOOL observerMode = [arguments[@"observerMode"] boolValue];
-        BOOL usesStoreKit2IfAvailable = [arguments[@"usesStoreKit2IfAvailable"] boolValue];
+        NSString *purchasesAreCompletedBy = arguments[@"purchasesAreCompletedBy"];
 		BOOL shouldShowInAppMessagesAutomatically = YES;
         id object = arguments[@"shouldShowInAppMessagesAutomatically"];
         if (object != [NSNull null] && object != nil) {
@@ -56,18 +55,17 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
         }
         NSString * _Nullable verificationMode = arguments[@"entitlementVerificationMode"];
         NSString * _Nullable userDefaultsSuiteName = arguments[@"userDefaultsSuiteName"];
+        NSString *storeKitVersion = arguments[@"storeKitVersion"];
         [self setupPurchases:apiKey
                    appUserID:appUserID
-                observerMode:observerMode
+     purchasesAreCompletedBy:purchasesAreCompletedBy
        userDefaultsSuiteName:userDefaultsSuiteName
-    usesStoreKit2IfAvailable:usesStoreKit2IfAvailable
-    shouldShowInAppMessagesAutomatically: shouldShowInAppMessagesAutomatically
+             storeKitVersion: storeKitVersion
+shouldShowInAppMessagesAutomatically: shouldShowInAppMessagesAutomatically
             verificationMode:verificationMode
                       result:result];
     } else if ([@"setAllowSharingStoreAccount" isEqualToString:call.method]) {
         [self setAllowSharingStoreAccount:[arguments[@"allowSharing"] boolValue] result:result];
-    } else if ([@"setFinishTransactions" isEqualToString:call.method]) {
-        [self setFinishTransactions:[arguments[@"finishTransactions"] boolValue] result:result];
     } else if ([@"getOfferings" isEqualToString:call.method]) {
         [self getOfferingsWithResult:result];
     } else if ([@"getCurrentOfferingForPlacement" isEqualToString:call.method]) {
@@ -88,6 +86,8 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
                        result:result];
     } else if ([@"getAppUserID" isEqualToString:call.method]) {
         [self getAppUserIDWithResult:result];
+    } else if ([@"getStorefront" isEqualToString:call.method]) {
+        [self getStorefrontWithResult:result];
     } else if ([@"restorePurchases" isEqualToString:call.method]) {
         [self restorePurchasesWithResult:result];
     } else if ([@"logOut" isEqualToString:call.method]) {
@@ -106,10 +106,10 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
         [self getCustomerInfoWithResult:result];
     } else if ([@"syncPurchases" isEqualToString:call.method]) {
         [self syncPurchasesWithResult:result];
-    } else if ([@"setAutomaticAppleSearchAdsAttributionCollection" isEqualToString:call.method]) {
-        [self setAutomaticAppleSearchAdsAttributionCollection:[arguments[@"enabled"] boolValue] result:result];
     } else if ([@"enableAdServicesAttributionTokenCollection" isEqualToString:call.method]) {
         [self enableAdServicesAttributionTokenCollection:result];
+    } else if ([@"recordPurchaseForProductID" isEqualToString:call.method]) {
+        [self recordPurchaseForProductID:arguments[@"productIdentifier"] result:result];
     } else if ([@"isAnonymous" isEqualToString:call.method]) {
         [self isAnonymousWithResult:result];
     } else if ([@"isConfigured" isEqualToString:call.method]) {
@@ -225,6 +225,22 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
     } else if ([@"syncAmazonPurchase" isEqualToString:call.method]) {
         // NOOP
         result(nil);
+    } else if ([@"eligibleWinBackOffersForProduct" isEqualToString:call.method]) {
+        [self eligibleWinBackOffersForProduct:arguments[@"productIdentifier"] result:result];
+    } else if ([@"purchaseProductWithWinBackOffer" isEqualToString:call.method]) {
+        [self purchaseProductWithWinBackOffer:arguments[@"productIdentifier"]
+                       winBackOfferIdentifier:arguments[@"winBackOfferIdentifier"]
+                                       result:result];
+    } else if ([@"purchasePackageWithWinBackOffer" isEqualToString:call.method]) {
+        [self purchasePackageWithWinBackOffer:arguments[@"packageIdentifier"]
+                     presentedOfferingContext:arguments[@"presentedOfferingContext"]
+                       winBackOfferIdentifier:arguments[@"winBackOfferIdentifier"]
+                                     result:result];
+    } else if ([@"isWebPurchaseRedemptionURL" isEqualToString:call.method]) {
+        result([NSNumber numberWithBool:[RCCommonFunctionality isWebPurchaseRedemptionURL:arguments[@"urlString"]]]);
+    } else if ([@"redeemWebPurchase" isEqualToString:call.method]) {
+        [RCCommonFunctionality redeemWebPurchaseWithUrlString:arguments[@"redemptionLink"]
+                                                   completion:[self getResponseCompletionBlock:result]];
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -232,9 +248,9 @@ NSString *PurchasesLogHandlerEvent = @"Purchases-LogHandlerEvent";
 
 - (void)setupPurchases:(NSString *)apiKey
              appUserID:(NSString *)appUserID
-          observerMode:(BOOL)observerMode
+purchasesAreCompletedBy:(nullable NSString *)purchasesAreCompletedBy
  userDefaultsSuiteName:(nullable NSString *)userDefaultsSuiteName
-usesStoreKit2IfAvailable:(BOOL)usesStoreKit2IfAvailable
+       storeKitVersion:(nullable NSString *)storeKitVersion
 shouldShowInAppMessagesAutomatically:(BOOL)shouldShowInAppMessagesAutomatically
       verificationMode:(nullable NSString *)verificationMode
                 result:(FlutterResult)result {
@@ -247,11 +263,11 @@ shouldShowInAppMessagesAutomatically:(BOOL)shouldShowInAppMessagesAutomatically
 
     RCPurchases *purchases = [RCPurchases configureWithAPIKey:apiKey
                                                     appUserID:appUserID
-                                      purchasesAreCompletedBy:(observerMode ? RCPurchasesAreCompletedByMyApp : RCPurchasesAreCompletedByRevenueCat)
+                                      purchasesAreCompletedBy:purchasesAreCompletedBy
                                         userDefaultsSuiteName:userDefaultsSuiteName
                                                platformFlavor:self.platformFlavor
                                         platformFlavorVersion:self.platformFlavorVersion
-                                     usesStoreKit2IfAvailable:usesStoreKit2IfAvailable
+                                              storeKitVersion:storeKitVersion
                                             dangerousSettings:nil
                          shouldShowInAppMessagesAutomatically:shouldShowInAppMessagesAutomatically
                                              verificationMode:verificationMode];
@@ -266,16 +282,6 @@ shouldShowInAppMessagesAutomatically:(BOOL)shouldShowInAppMessagesAutomatically
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     [RCCommonFunctionality setAllowSharingStoreAccount:allowSharingStoreAccount];
 #pragma GCC diagnostic pop
-    result(nil);
-}
-
-- (void)setFinishTransactions:(BOOL)finishTransactions
-                       result:(FlutterResult)result {
-    if (finishTransactions) {
-        [RCCommonFunctionality setPurchasesAreCompletedBy:RCPurchasesAreCompletedByRevenueCat];
-    } else {
-        [RCCommonFunctionality setPurchasesAreCompletedBy:RCPurchasesAreCompletedByMyApp];
-    }
     result(nil);
 }
 
@@ -326,8 +332,32 @@ signedDiscountTimestamp:(nullable NSString *)discountTimestamp
     [RCCommonFunctionality syncPurchasesWithCompletionBlock:[self getResponseCompletionBlock:result]];
 }
 
+- (void)recordPurchaseForProductID:(NSString*)productId
+                            result:(FlutterResult)result {
+    if (@available(iOS 15.0, macOS 12.0, *)) {
+        [RCCommonFunctionality recordPurchaseForProductID:productId
+                                               completion:^(NSDictionary<NSString *,id> * _Nullable responseDictionary, RCErrorContainer * _Nullable error) {
+            if (error) {
+                [self rejectWithResult:result error:error];
+            } else {
+                result(responseDictionary);
+            }
+        }];
+    } else {
+        // Fallback on earlier versions
+        NSLog(@"[Purchases] Warning: tried to call recordPurchaseForProductID, but it's only available on iOS 15.0 and macOS 12.0 or greater.");
+        result(nil);
+    }
+}
+
 - (void)getAppUserIDWithResult:(FlutterResult)result {
     result([RCCommonFunctionality appUserID]);
+}
+
+- (void)getStorefrontWithResult:(FlutterResult)result {
+    [RCCommonFunctionality getStorefrontWithCompletion:^(NSDictionary<NSString *,id> * _Nullable storefrontMap) {
+        result(storefrontMap);
+    }];
 }
 
 - (void)logInAppUserID:(NSString * _Nullable)appUserID
@@ -367,12 +397,6 @@ signedDiscountTimestamp:(nullable NSString *)discountTimestamp
     [RCCommonFunctionality getCustomerInfoWithCompletionBlock:[self getResponseCompletionBlock:result]];
 }
 
-- (void)setAutomaticAppleSearchAdsAttributionCollection:(BOOL)enabled
-                                                 result:(FlutterResult)result {
-    [RCCommonFunctionality setAutomaticAppleSearchAdsAttributionCollection:enabled];
-    result(nil);
-}
-
 - (void)enableAdServicesAttributionTokenCollection:(FlutterResult)result {
     if (@available(iOS 14.3, macOS 11.1, macCatalyst 14.3, *)) {
         [RCCommonFunctionality enableAdServicesAttributionTokenCollection];
@@ -394,8 +418,8 @@ signedDiscountTimestamp:(nullable NSString *)discountTimestamp
                                           result:(FlutterResult)result {
     [RCCommonFunctionality checkTrialOrIntroductoryPriceEligibility:products
                                                     completionBlock:^(NSDictionary<NSString *, NSDictionary *> *_Nonnull responseDictionary) {
-                                                        result([NSDictionary dictionaryWithDictionary:responseDictionary]);
-                                                    }];
+                      result([NSDictionary dictionaryWithDictionary:responseDictionary]);
+    }];
 }
 
 - (void)invalidateCustomerInfoCacheWithResult:(FlutterResult)result {
@@ -542,7 +566,60 @@ signedDiscountTimestamp:(nullable NSString *)discountTimestamp
                                                 }];
 }
 
-#if TARGET_OS_IPHONE
+- (void)eligibleWinBackOffersForProduct:(NSString *)productIdentifier result:(FlutterResult)result {
+    if (@available(iOS 18.0, macOS 15.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *)) {
+        [RCCommonFunctionality eligibleWinBackOffersForProductIdentifier:productIdentifier
+                                                         completionBlock:^(NSArray<NSDictionary *> * _Nullable offers, RCErrorContainer * _Nullable errorContainer) {
+            if (errorContainer) {
+                [self rejectWithResult:result error:errorContainer];
+            } else {
+                result(offers);
+            }
+        }];
+    } else {
+        NSLog(@"[Purchases] Warning: Win-back offers are only available on iOS 18.0 or greater.");
+        NSError *error = [self createUnsupportedErrorWithDescription:@"iOS win-back offers are only available on iOS 18.0 or greater."];
+        RCErrorContainer *errorContainer = [[RCErrorContainer alloc] initWithError:error
+                                                                    extraPayload:@{}];
+        [self rejectWithResult:result error:errorContainer];
+    }
+}
+
+- (void)purchaseProductWithWinBackOffer:(NSString *)productIdentifier
+                 winBackOfferIdentifier:(NSString *)winBackOfferIdentifier
+                                 result:(FlutterResult)result {
+    if (@available(iOS 18.0, macOS 15.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *)) {
+        [RCCommonFunctionality purchaseProduct:productIdentifier
+                                winBackOfferID:winBackOfferIdentifier
+                               completionBlock:[self getResponseCompletionBlock:result]];
+    } else {
+        NSLog(@"[Purchases] Warning: Win-back offers are only available on iOS 18.0 or greater.");
+        NSError *error = [self createUnsupportedErrorWithDescription:@"iOS win-back offers are only available on iOS 18.0 or greater."];
+        RCErrorContainer *errorContainer = [[RCErrorContainer alloc] initWithError:error
+                                                                    extraPayload:@{}];
+        [self rejectWithResult:result error:errorContainer];
+    }
+}
+
+- (void)purchasePackageWithWinBackOffer:(NSString *)packageIdentifier
+               presentedOfferingContext:(NSDictionary *)presentedOfferingContext
+                 winBackOfferIdentifier:(NSString *)winBackOfferIdentifier
+                                 result:(FlutterResult)result {
+    if (@available(iOS 18.0, macOS 15.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *)) {
+        [RCCommonFunctionality purchasePackage:packageIdentifier
+                      presentedOfferingContext:presentedOfferingContext
+                                winBackOfferID:winBackOfferIdentifier
+                               completionBlock:[self getResponseCompletionBlock:result]];
+    } else {
+        NSLog(@"[Purchases] Warning: Win-back offers are only available on iOS 18.0 or greater.");
+        NSError *error = [self createUnsupportedErrorWithDescription:@"iOS win-back offers are only available on iOS 18.0 or greater."];
+        RCErrorContainer *errorContainer = [[RCErrorContainer alloc] initWithError:error
+                                                                      extraPayload:@{}];
+        [self rejectWithResult:result error:errorContainer];
+    }
+}
+
+ #if TARGET_OS_IPHONE
 - (void)beginRefundRequestForActiveEntitlementWithResult:(FlutterResult)result {
     if (@available(iOS 15, *)) {
         [RCCommonFunctionality beginRefundRequestForActiveEntitlementCompletion:[self getBeginRefundResponseCompletionBlock:result]];
@@ -678,7 +755,13 @@ readyForPromotedProduct:(RCStoreProduct *)product
 }
 
 - (NSString *)platformFlavorVersion {
-    return @"6.30.2";
+    return @"8.8.0";
+}
+
+- (NSError *)createUnsupportedErrorWithDescription:(NSString *)description {
+    return [[NSError alloc] initWithDomain:RCPurchasesErrorCodeDomain
+                                      code:RCUnsupportedError
+                                  userInfo:@{NSLocalizedDescriptionKey : description}];
 }
 
 @end

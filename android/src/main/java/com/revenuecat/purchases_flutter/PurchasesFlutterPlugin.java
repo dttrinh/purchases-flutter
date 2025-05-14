@@ -11,7 +11,6 @@ import androidx.annotation.Nullable;
 
 import com.revenuecat.purchases.DangerousSettings;
 import com.revenuecat.purchases.Purchases;
-import com.revenuecat.purchases.PurchasesAreCompletedBy;
 import com.revenuecat.purchases.PurchasesErrorCode;
 import com.revenuecat.purchases.Store;
 import com.revenuecat.purchases.common.PlatformInfo;
@@ -40,6 +39,8 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import kotlin.UninitializedPropertyAccessException;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 
 /**
  * PurchasesFlutterPlugin
@@ -51,11 +52,6 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
     private static final String CUSTOMER_INFO_UPDATED = "Purchases-CustomerInfoUpdated";
     protected static final String LOG_HANDLER_EVENT = "Purchases-LogHandlerEvent";
 
-    // Only set registrar for v1 embedder.
-    @SuppressWarnings("deprecation")
-    private io.flutter.plugin.common.PluginRegistry.Registrar registrar;
-    // Only set activity for v2 embedder. Always access activity from getActivity()
-    // method.
     @Nullable
     private Context applicationContext;
     @Nullable
@@ -66,28 +62,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private static final String PLATFORM_NAME = "flutter";
-    private static final String PLUGIN_VERSION = "6.30.2";
-
-    /**
-     * Plugin registration.
-     */
-    @SuppressWarnings("deprecation")
-    public static void registerWith(io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
-        PurchasesFlutterPlugin instance = new PurchasesFlutterPlugin();
-        instance.onAttachedToEngine(registrar.messenger(), registrar.context());
-        instance.registrar = registrar;
-        registrar.addViewDestroyListener(new io.flutter.plugin.common.PluginRegistry.ViewDestroyListener() {
-            @Override
-            public boolean onViewDestroy(io.flutter.view.FlutterNativeView flutterNativeView) {
-                try {
-                    Purchases.getSharedInstance().close();
-                } catch (UninitializedPropertyAccessException e) {
-                    // there's no instance so all good
-                }
-                return false;
-            }
-        });
-    }
+    private static final String PLUGIN_VERSION = "8.8.0";
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -129,30 +104,25 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
         onDetachedFromActivity();
     }
 
-    public Activity getActivity() {
-        return registrar != null ? registrar.activity() : activity;
-    }
-
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         switch (call.method) {
             case "setupPurchases":
                 String apiKey = call.argument("apiKey");
                 String appUserId = call.argument("appUserId");
-                Boolean observerMode = call.argument("observerMode");
+                String purchasesAreCompletedBy = call.argument("purchasesAreCompletedBy");
                 Boolean useAmazon = call.argument("useAmazon");
                 // noinspection unused
                 String userDefaultsSuiteName = call.argument("userDefaultsSuiteName"); // iOS-only, unused.
                 // noinspection unused
-                Boolean usesStoreKit2IfAvailable = call.argument("usesStoreKit2IfAvailable"); // iOS-only, unused.
+                String storeKitVersion = call.argument("storeKitVersion"); // iOS-only, unused.
                 Boolean shouldShowInAppMessagesAutomatically = call.argument("shouldShowInAppMessagesAutomatically");
                 String verificationMode = call.argument("entitlementVerificationMode");
-                setupPurchases(apiKey, appUserId, observerMode, useAmazon,
-                        shouldShowInAppMessagesAutomatically, verificationMode, result);
-                break;
-            case "setFinishTransactions":
-                Boolean finishTransactions = call.argument("finishTransactions");
-                setFinishTransactions(finishTransactions, result);
+                Boolean pendingTransactionsForPrepaidPlansEnabled = call
+                        .argument("pendingTransactionsForPrepaidPlansEnabled");
+                setupPurchases(apiKey, appUserId, purchasesAreCompletedBy, useAmazon,
+                        shouldShowInAppMessagesAutomatically, verificationMode,
+                        pendingTransactionsForPrepaidPlansEnabled, result);
                 break;
             case "setAllowSharingStoreAccount":
                 Boolean allowSharing = call.argument("allowSharing");
@@ -205,6 +175,9 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             case "getAppUserID":
                 getAppUserID(result);
                 break;
+            case "getStorefront":
+                getStorefront(result);
+                break;
             case "restorePurchases":
                 restorePurchases(result);
                 break;
@@ -220,7 +193,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
                 setDebugLogsEnabled(enabled, result);
                 break;
             case "setLogLevel":
-                String level = (String) call.argument("level");
+                String level = call.argument("level");
                 setLogLevel(level, result);
                 break;
             case "setProxyURLString":
@@ -232,14 +205,6 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
                 break;
             case "syncPurchases":
                 syncPurchases(result);
-                break;
-            case "setAutomaticAppleSearchAdsAttributionCollection":
-                // NOOP
-                result.success(null);
-                break;
-            case "enableAdServicesAttributionTokenCollection":
-                // NOOP
-                result.success(null);
                 break;
             case "isAnonymous":
                 isAnonymous(result);
@@ -260,6 +225,11 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             case "beginRefundRequestForActiveEntitlement":
             case "beginRefundRequestForProduct":
             case "beginRefundRequestForEntitlement":
+            case "recordPurchaseForProductID":
+            case "enableAdServicesAttributionTokenCollection":
+            case "eligibleWinBackOffersForProduct":
+            case "purchaseProductWithWinBackOffer":
+            case "purchasePackageWithWinBackOffer":
                 // NOOP
                 result.success(null);
                 break;
@@ -369,26 +339,32 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
                 syncAmazonPurchase(productID, receiptID, amazonUserID, isoCurrencyCode,
                         price, result);
                 break;
+            case "isWebPurchaseRedemptionURL":
+                String urlString = call.argument("urlString");
+                isWebPurchaseRedemptionURL(urlString, result);
+                break;
+            case "redeemWebPurchase":
+                String redemptionLink = call.argument("redemptionLink");
+                redeemWebPurchase(redemptionLink, result);
+                break;
             default:
                 result.notImplemented();
                 break;
         }
     }
 
-    private void setupPurchases(String apiKey, String appUserID, @Nullable Boolean observerMode,
-            @Nullable Boolean useAmazon, @Nullable Boolean shouldShowInAppMessagesAutomatically,
-            @Nullable String verificationMode, final Result result) {
+    private void setupPurchases(String apiKey, String appUserID,
+            @Nullable String purchasesAreCompletedBy, @Nullable Boolean useAmazon,
+            @Nullable Boolean shouldShowInAppMessagesAutomatically, @Nullable String verificationMode,
+            @Nullable Boolean pendingTransactionsForPrepaidPlansEnabled,
+            final Result result) {
         if (this.applicationContext != null) {
             PlatformInfo platformInfo = new PlatformInfo(PLATFORM_NAME, PLUGIN_VERSION);
             Store store = Store.PLAY_STORE;
             if (useAmazon != null && useAmazon) {
                 store = Store.AMAZON;
             }
-            PurchasesAreCompletedBy purchasesAreCompletedBy = null;
-            if (observerMode != null) {
-                purchasesAreCompletedBy = observerMode ?
-                        PurchasesAreCompletedBy.MY_APP : PurchasesAreCompletedBy.REVENUECAT;
-            }
+
             CommonKt.configure(this.applicationContext,
                     apiKey,
                     appUserID,
@@ -397,7 +373,8 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
                     store,
                     new DangerousSettings(),
                     shouldShowInAppMessagesAutomatically,
-                    verificationMode);
+                    verificationMode,
+                    pendingTransactionsForPrepaidPlansEnabled);
             setUpdatedCustomerInfoListener();
             result.success(null);
         } else {
@@ -413,19 +390,6 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             Map<String, Object> customerInfoMap = CustomerInfoMapperKt.map(customerInfo);
             invokeChannelMethodOnUiThread(CUSTOMER_INFO_UPDATED, customerInfoMap);
         });
-    }
-
-    private void setFinishTransactions(@Nullable Boolean finishTransactions, Result result) {
-        if (finishTransactions != null) {
-            CommonKt.setPurchasesAreCompletedBy(finishTransactions ?
-                    PurchasesAreCompletedBy.REVENUECAT : PurchasesAreCompletedBy.MY_APP);
-            result.success(null);
-        } else {
-            result.error(
-                    INVALID_ARGS_ERROR_CODE,
-                    "Missing finishTransactions argument",
-                    null);
-        }
     }
 
     @SuppressWarnings("deprecation")
@@ -468,14 +432,14 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
     }
 
     private void purchaseProduct(final String productIdentifier,
-                                 final String type,
-                                 final String googleOldProductId,
-                                 @Nullable final Integer googleProrationMode,
-                                 @Nullable final Boolean googleIsPersonalizedPrice,
-                                 @Nullable final Map<String, Object> presentedOfferingContext,
-                                 final Result result) {
+            final String type,
+            final String googleOldProductId,
+            @Nullable final Integer googleProrationMode,
+            @Nullable final Boolean googleIsPersonalizedPrice,
+            @Nullable final Map<String, Object> presentedOfferingContext,
+            final Result result) {
         CommonKt.purchaseProduct(
-                getActivity(),
+                activity,
                 productIdentifier,
                 type,
                 null,
@@ -493,7 +457,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             @Nullable final Boolean googleIsPersonalizedPrice,
             final Result result) {
         CommonKt.purchasePackage(
-                getActivity(),
+                activity,
                 packageIdentifier,
                 presentedOfferingContext,
                 googleOldProductId,
@@ -510,7 +474,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             @Nullable final Map<String, Object> presentedOfferingContext,
             final Result result) {
         CommonKt.purchaseSubscriptionOption(
-                getActivity(),
+                activity,
                 productIdentifier,
                 optionIdentifier,
                 googleOldProductId,
@@ -522,6 +486,16 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
 
     private void getAppUserID(final Result result) {
         result.success(CommonKt.getAppUserID());
+    }
+
+    private void getStorefront(final Result result) {
+        CommonKt.getStorefront(new Function1<Map<String, ? extends Object>, Unit>() {
+            @Override
+            public Unit invoke(Map<String, ?> storefrontMap) {
+                result.success(storefrontMap);
+                return null;
+            }
+        });
     }
 
     private void restorePurchases(final Result result) {
@@ -754,6 +728,30 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
         result.success(null);
     }
 
+    private void isWebPurchaseRedemptionURL(String urlString, final Result result) {
+        if (urlString == null) {
+            result.error(
+                    INVALID_ARGS_ERROR_CODE,
+                    "Missing urlString argument",
+                    null
+            );
+            return;
+        }
+        result.success(CommonKt.isWebPurchaseRedemptionURL(urlString));
+    }
+
+    private void redeemWebPurchase(String redemptionLink, final Result result) {
+        if (redemptionLink == null) {
+            result.error(
+                    INVALID_ARGS_ERROR_CODE,
+                    "Missing redemptionLink argument",
+                    null
+            );
+            return;
+        }
+        CommonKt.redeemWebPurchase(redemptionLink, getOnResult(result));
+    }
+
     private void runOnUiThread(Runnable runnable) {
         handler.post(runnable);
     }
@@ -762,12 +760,12 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
     private OnResult getOnResult(final Result result) {
         return new OnResult() {
             @Override
-            public void onReceived(Map<String, ?> map) {
+            public void onReceived(@NotNull Map<String, ?> map) {
                 result.success(map);
             }
 
             @Override
-            public void onError(ErrorContainer errorContainer) {
+            public void onError(@NotNull ErrorContainer errorContainer) {
                 reject(errorContainer, result);
             }
         };
@@ -782,7 +780,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
             }
 
             @Override
-            public void onError(ErrorContainer errorContainer) {
+            public void onError(@NotNull ErrorContainer errorContainer) {
                 reject(errorContainer, result);
             }
         };
