@@ -156,7 +156,10 @@ shouldShowInAppMessagesAutomatically: shouldShowInAppMessagesAutomatically
     } else if([@"setFirebaseAppInstanceID" isEqualToString:call.method]) {
         NSString *firebaseAppInstanceID = arguments[@"firebaseAppInstanceID"];
         [self setFirebaseAppInstanceID:firebaseAppInstanceID result:result];
-    } else if ([@"setOnesignalID" isEqualToString:call.method]) {
+    } else if([@"setTenjinAnalyticsInstallationID" isEqualToString:call.method]) {
+        NSString *tenjinAnalyticsInstallationID = arguments[@"tenjinAnalyticsInstallationID"];
+        [self setTenjinAnalyticsInstallationID:tenjinAnalyticsInstallationID result:result];
+    }else if ([@"setOnesignalID" isEqualToString:call.method]) {
         NSString *onesignalID = arguments[@"onesignalID"];
         [self setOnesignalID:onesignalID result:result];
     } else if ([@"setAirshipChannelID" isEqualToString:call.method]) {
@@ -502,6 +505,12 @@ signedDiscountTimestamp:(nullable NSString *)discountTimestamp
     result(nil);
 }
 
+- (void)setTenjinAnalyticsInstallationID:(nullable NSString *)tenjinAnalyticsInstallationID
+                                  result:(FlutterResult)result {
+    [RCCommonFunctionality setTenjinAnalyticsInstallationID:tenjinAnalyticsInstallationID];
+    result(nil);
+}
+
 - (void)setOnesignalID:(nullable NSString *)onesignalID result:(FlutterResult)result {
     [RCCommonFunctionality setOnesignalID:onesignalID];
     result(nil);
@@ -755,7 +764,7 @@ readyForPromotedProduct:(RCStoreProduct *)product
 }
 
 - (NSString *)platformFlavorVersion {
-    return @"8.8.0";
+    return @"8.10.6";
 }
 
 - (NSError *)createUnsupportedErrorWithDescription:(NSString *)description {

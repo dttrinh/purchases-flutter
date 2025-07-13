@@ -62,7 +62,7 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private static final String PLATFORM_NAME = "flutter";
-    private static final String PLUGIN_VERSION = "8.8.0";
+    private static final String PLUGIN_VERSION = "8.10.6";
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
@@ -281,6 +281,10 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
                 String firebaseAppInstanceID = call.argument("firebaseAppInstanceID");
                 setFirebaseAppInstanceID(firebaseAppInstanceID, result);
                 break;
+            case "setTenjinAnalyticsInstallationID":
+                String tenjinAnalyticsInstallationID = call.argument("tenjinAnalyticsInstallationID");
+                setTenjinAnalyticsInstallationID(tenjinAnalyticsInstallationID, result);
+                break;
             case "setOnesignalID":
                 String onesignalID = call.argument("onesignalID");
                 setOnesignalID(onesignalID, result);
@@ -387,8 +391,13 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
 
     private void setUpdatedCustomerInfoListener() {
         Purchases.getSharedInstance().setUpdatedCustomerInfoListener(customerInfo -> {
-            Map<String, Object> customerInfoMap = CustomerInfoMapperKt.map(customerInfo);
-            invokeChannelMethodOnUiThread(CUSTOMER_INFO_UPDATED, customerInfoMap);
+            CustomerInfoMapperKt.mapAsync(
+                    customerInfo,
+                    map -> {
+                        invokeChannelMethodOnUiThread(CUSTOMER_INFO_UPDATED, map);
+                        return Unit.INSTANCE;
+                    }
+            );
         });
     }
 
@@ -624,6 +633,14 @@ public class PurchasesFlutterPlugin implements FlutterPlugin, MethodCallHandler,
 
     private void setFirebaseAppInstanceID(String firebaseAppInstanceId, final Result result) {
         SubscriberAttributesKt.setFirebaseAppInstanceID(firebaseAppInstanceId);
+        result.success(null);
+    }
+
+    private void setTenjinAnalyticsInstallationID(
+        String tenjinAnalyticsInstallationID,
+        final Result result
+    ) {
+        SubscriberAttributesKt.setTenjinAnalyticsInstallationID(tenjinAnalyticsInstallationID);
         result.success(null);
     }
 
